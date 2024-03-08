@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -27,7 +28,11 @@ func main() {
 		panic(err)
 	}
 
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,PUT,DELETE",
+		AllowHeaders: "*",
+	}))
 
 	app.Static("/", "./client/dist")
 
@@ -63,6 +68,67 @@ func main() {
 
 		return c.JSON(&fiber.Map{
 			"data": result,
+		})
+	})
+
+	app.Delete("/users/:id", func(c *fiber.Ctx) error {
+		userID := c.Params("id")
+
+		objID, err := primitive.ObjectIDFromHex(userID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "ID de usuario no válido",
+			})
+		}
+
+		filter := bson.M{"_id": objID}
+
+		coll := client.Database("go-react").Collection("users")
+
+		_, err = coll.DeleteOne(context.TODO(), filter)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Error al eliminar usuario",
+			})
+		}
+
+		return c.JSON(fiber.Map{
+			"message": "Usuario eliminado exitosamente",
+		})
+	})
+
+	// Handler para editar un usuario
+	app.Put("/users/:id", func(c *fiber.Ctx) error {
+		userID := c.Params("id")
+		objID, err := primitive.ObjectIDFromHex(userID)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "ID de usuario no válido",
+			})
+		}
+		var updatedUser models.User
+		if err := c.BodyParser(&updatedUser); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Error al analizar los datos del usuario",
+			})
+		}
+
+		coll := client.Database("go-react").Collection("users")
+
+		filter := bson.M{"_id": objID}
+		update := bson.M{"$set": bson.M{
+			"Name": updatedUser.Name,
+		}}
+		ee, err := coll.UpdateOne(context.TODO(), filter, update)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Error al actualizar el usuario",
+			})
+		}
+		fmt.Printf("UpdateResult: %+v\n", ee)
+
+		return c.JSON(fiber.Map{
+			"message": "Usuario actualizado exitosamente",
 		})
 	})
 
